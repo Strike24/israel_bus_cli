@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "israel-bus-cli"
+version = "0.1.0"
+description = "CLI + Python API to search Israeli bus stops and realtime line arrivals"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [ { name = "Ben Cohen", email = "benxcohen@gmail.com" } ]
+keywords = ["israel", "bus", "transport", "cli", "public-transit"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Intended Audience :: End Users/Desktop",
+  "Intended Audience :: Developers",
+  "Topic :: Utilities",
+  "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
+]
+requires-python = ">=3.9"
+dependencies = [
+  "requests>=2.31.0",
+  "python-bidi>=0.4.2",
+]
+
+[project.urls]
+Homepage = "https://github.com/Strike24/israel_bus_cli"
+Issues = "https://github.com/Strike24/israel_bus_cli/issues"
+
+[project.scripts]
+israel-bus = "israel_bus_cli.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "."}
+packages = ["israel_bus_cli"]
+
+[tool.setuptools.package-data]
+israel_bus_cli = ["py.typed"]
+
+[tool.setuptools.dynamic]

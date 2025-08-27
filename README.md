@@ -1,33 +1,51 @@
 # Israel Bus CLI 🚌🚍
-A Command Line Interface for accessing real-time bus information in Israel. 🟢 <br>
-Using Bus.gov.il API from their website and OpenStreetMap for address geocoding.
+CLI & Python API for searching Israeli bus stops and realtime line arrival info (unofficial, uses public Web endpoints).
 
-> API \ Python Package coming soon 👀
+## Install
 
-## How to Use
+```
+pip install israel-bus-cli
+```
 
-1. Clone the repository:
-   ```
-   git clone https://github.com/Strike24/israel_bus_cli.git
-   cd israel_bus_cli
-   ```
-2. Create a virtual environment:
-   ```
-   python -m venv venv
-   ```
+## Quick usage (CLI)
 
-3. Activate the virtual environment:
-   ```
-   source venv/bin/activate (linux)
+Search address and list nearby stops (JSON):
+```
+israel-bus --address "יהודה הנשיא 36 תל אביב" --list-stops --json
+```
 
-   .\venv\Scripts\activate (windows)
-   ```
-4. Install dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
+Get lines for the first (nearest) stop, filter line 12:
+```
+israel-bus --address "יהודה הנשיא 36 תל אביב" --first-stop --line 12
+```
 
-4. Run the CLI:
-   ```
-   python main.py
-   ```
+Direct by stop id:
+```
+israel-bus --stop-id 26629 --line 12 --json
+```
+
+Interactive mode (no flags):
+```
+israel-bus
+```
+
+## Python API
+```python
+from israel_bus_cli import search_address, get_stops_near_location, get_lines_by_stop
+
+addr = search_address("יהודה הנשיא 36 תל אביב")[0]
+lat, lon = float(addr['lat']), float(addr['lon'])
+stops = get_stops_near_location(lat, lon)
+lines = get_lines_by_stop('26629')
+```
+
+## Disclaimer
+Not affiliated with official transit authorities. API structure may change.
+
+## License
+MIT
+
+
+## Development
+
+

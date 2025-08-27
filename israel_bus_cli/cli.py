@@ -1,24 +1,15 @@
-"""Israel Bus CLI
-
-Interactive or flag-based retrieval of:
-1. Nearby stops by address or coordinates
-2. Realtime lines (with arrival info) for a stop
-
-Examples:
-    python main.py --address "יהודה הנשיא 36 תל אביב" --list-stops --radius 400
-    python main.py --address "יהודה הנשיא 36 תל אביב" --first-stop --line 12
-    python main.py --stop-id 26629 --line 12
-    python main.py --address "יהודה הנשיא 36 תל אביב" --json --first-stop
-
-If no flags are provided the tool enters interactive mode.
-"""
-
-from bidi import get_display
-import argparse
-import sys
-import json
+"""CLI entry point (interactive + flag modes)."""
+from __future__ import annotations
+import argparse, sys, json
 from typing import Optional, List, Dict, Any
-from bus_info import (
+
+try:
+    from bidi import get_display  # type: ignore
+except Exception:  # pragma: no cover
+    def get_display(s: str) -> str:  # fallback noop
+        return s
+
+from .bus_info import (
     search_address,
     get_stops_near_location,
     get_lines_by_stop,
@@ -28,24 +19,26 @@ from bus_info import (
     format_line,
     format_arrival,
 )
+from . import __version__
 
-DEFAULT_RADIUS = 300  # meters
+DEFAULT_RADIUS = 300
 
 def parse_args():
-    parser = argparse.ArgumentParser(add_help=True)
-    parser.add_argument("--address", help="Free text address to geocode (implies non-interactive)")
-    parser.add_argument("--address-index", type=int, default=0, help="Index of address result to use (default 0)")
-    parser.add_argument("--lat", type=float, help="Latitude (skip geocoding if both lat & lon provided)")
-    parser.add_argument("--lon", type=float, help="Longitude (skip geocoding if both lat & lon provided)")
-    parser.add_argument("--radius", type=int, default=DEFAULT_RADIUS, help="Radius in meters for nearby stops")
-    parser.add_argument("--stop-id", help="Fetch realtime lines for this stop id directly")
-    parser.add_argument("--first-stop", action="store_true", help="Automatically select nearest stop (after address lookup)")
-    parser.add_argument("--line", help="Filter line number")
-    parser.add_argument("--list-stops", action="store_true", help="List stops and exit (unless --first-stop also used)")
-    parser.add_argument("--limit-stops", type=int, default=0, help="Limit number of stops displayed (0 = all)")
-    parser.add_argument("--json", action="store_true", help="Output JSON instead of human readable text")
-    parser.add_argument("--no-bidi", action="store_true", help="Disable bidi rendering (raw text)")
-    return parser.parse_args()
+    p = argparse.ArgumentParser(prog="israel-bus", description="Israel bus CLI (unofficial)")
+    p.add_argument("--address")
+    p.add_argument("--address-index", type=int, default=0)
+    p.add_argument("--lat", type=float)
+    p.add_argument("--lon", type=float)
+    p.add_argument("--radius", type=int, default=DEFAULT_RADIUS)
+    p.add_argument("--stop-id")
+    p.add_argument("--first-stop", action="store_true")
+    p.add_argument("--line")
+    p.add_argument("--list-stops", action="store_true")
+    p.add_argument("--limit-stops", type=int, default=0)
+    p.add_argument("--json", action="store_true")
+    p.add_argument("--no-bidi", action="store_true")
+    p.add_argument("--version", action="store_true", help="Print version and exit")
+    return p.parse_args()
 
 def prompt_address() -> tuple[float, float]:
     query = input("Search address (or blank to quit): ").strip()
@@ -74,9 +67,8 @@ def prompt_address() -> tuple[float, float]:
             pass
         print("Invalid choice.")
 
-def list_nearby_stops(lat: float, lon: float, radius: int = DEFAULT_RADIUS, *, limit: int = 0, disable_bidi: bool = False, json_mode: bool = False):
+def list_nearby_stops(lat: float, lon: float, radius: int, *, limit: int = 0, disable_bidi: bool = False, json_mode: bool = False):
     stops = get_stops_near_location(lat, lon, radius)
-    # Sort by numeric distance if present
     def dist_val(s):
         d = s.get("Distance") or s.get("DistanceFromStart")
         try:
@@ -87,26 +79,19 @@ def list_nearby_stops(lat: float, lon: float, radius: int = DEFAULT_RADIUS, *, l
     if limit > 0:
         stops = stops[:limit]
     if json_mode:
-        out = []
-        for idx, s in enumerate(stops):
-            out.append({
-                "index": idx,
-                "id": extract_stop_id(s),
-                "name": extract_stop_name(s),
-                "distance": s.get("Distance") or s.get("DistanceFromStart")
-            })
-        print(json.dumps({"count": len(out), "radius": radius, "stops": out}, ensure_ascii=False))
+        data = [{"index": i, "id": extract_stop_id(s), "name": extract_stop_name(s), "distance": s.get("Distance") or s.get("DistanceFromStart")} for i, s in enumerate(stops)]
+        print(json.dumps({"count": len(data), "radius": radius, "stops": data}, ensure_ascii=False))
         return stops
     if not stops:
         print("No stops found.")
         return []
     print(f"Found {len(stops)} stops within {radius}m:\n")
-    for idx, stop in enumerate(stops):
-        stop_name = extract_stop_name(stop)
-        stop_id = extract_stop_id(stop) or "?"
-        distance = stop.get("Distance") or stop.get("DistanceFromStart") or ""
-        dist_str = f" - {distance}m" if distance not in (None, "") else ""
-        name_disp = stop_name if disable_bidi else get_display(stop_name)
+    for idx, s in enumerate(stops):
+        name = extract_stop_name(s)
+        stop_id = extract_stop_id(s) or "?"
+        distance = s.get("Distance") or s.get("DistanceFromStart") or ""
+        dist_str = f" - {distance}" if distance not in (None, "") else ""
+        name_disp = name if disable_bidi else get_display(name)
         print(f"[{idx}] {name_disp} (ID: {stop_id}){dist_str}")
     return stops
 
@@ -126,20 +111,15 @@ def show_lines_for_stop(stop: Dict[str, Any] | None = None, *, stop_id: Optional
             print("No realtime lines.")
         return
     if json_mode:
-        payload = []
-        for line in lines:
-            payload.append({
-                "line": format_line(line),
-                "arrival": format_arrival(line),
-                "raw": line,
-            })
+        payload = [{"line": format_line(l), "arrival": format_arrival(l), "raw": l} for l in lines]
         print(json.dumps({"stop_id": stop_id, "lines": payload}, ensure_ascii=False))
         return
     print(f"Lines at stop {stop_id}:")
-    for line in lines:
-        base = format_line(line)
-        arrival = format_arrival(line)
-        print(" -", f"{base} [{arrival}]")
+    for l in lines:
+        base = format_line(l)
+        arrival = format_arrival(l)
+        text = f"{base} [{arrival}]"
+        print(" -", text if disable_bidi else get_display(text))
 
 def interactive_main():
     lat, lon = prompt_address()
@@ -147,12 +127,13 @@ def interactive_main():
         print("\nMenu: 1) Nearby stops 2) Change address 3) Quit")
         choice = input("> ").strip()
         if choice == "1":
+            radius = DEFAULT_RADIUS
             try:
                 radius_in = input(f"Radius meters (default {DEFAULT_RADIUS}): ").strip()
-                radius_val = int(radius_in) if radius_in else DEFAULT_RADIUS
+                radius = int(radius_in) if radius_in else DEFAULT_RADIUS
             except ValueError:
-                radius_val = DEFAULT_RADIUS
-            stops = list_nearby_stops(lat, lon, radius_val)
+                pass
+            stops = list_nearby_stops(lat, lon, radius)
             if not stops:
                 continue
             sel = input("Pick stop # to view lines (blank to return): ").strip()
@@ -162,14 +143,16 @@ def interactive_main():
                     show_lines_for_stop(stops[idx])
         elif choice == "2":
             lat, lon = prompt_address()
-        elif choice == "3" or choice.lower() in {"q", "quit", "exit"}:
+        elif choice in {"3", "q", "quit", "exit"}:
             break
         else:
             print("Unknown option.")
 
 def main():
     args = parse_args()
-    # If any non-interactive flag provided we go non-interactive
+    if args.version:
+        print(__version__)
+        return
     non_interactive = any([
         args.address, args.lat is not None, args.lon is not None, args.stop_id, args.first_stop, args.list_stops, args.line, args.json
     ])
@@ -179,7 +162,6 @@ def main():
     disable_bidi = args.no_bidi
     lat: Optional[float] = None
     lon: Optional[float] = None
-    # Coordinates override address search
     if args.lat is not None and args.lon is not None:
         lat, lon = args.lat, args.lon
     elif args.address:
@@ -192,7 +174,6 @@ def main():
             sys.exit(2)
         sel = addr_results[args.address_index]
         lat, lon = float(sel["lat"]), float(sel["lon"])
-    # If we still don't have coordinates and need them -> error
     if (args.list_stops or args.first_stop) and (lat is None or lon is None):
         print("Need --address or --lat/--lon for stop lookup", file=sys.stderr)
         sys.exit(2)
@@ -209,17 +190,12 @@ def main():
                 print(f"Selected nearest stop: {name_disp} (ID: {extract_stop_id(chosen_stop)})")
         if args.list_stops and not args.first_stop:
             return
-    # Direct stop id override
     stop_id = args.stop_id or (extract_stop_id(chosen_stop) if chosen_stop else None)
     if stop_id:
         show_lines_for_stop(chosen_stop, stop_id=stop_id, line_filter=args.line, json_mode=args.json, disable_bidi=disable_bidi)
     elif args.line:
         print("Line filter specified but no stop id context", file=sys.stderr)
         sys.exit(2)
-    # Done
 
-if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        print("\nBye")
+if __name__ == "__main__":  # pragma: no cover
+    main()
