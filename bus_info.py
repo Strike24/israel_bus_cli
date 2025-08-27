@@ -1,6 +1,11 @@
 import requests
 from typing import List, Dict, Any, Optional
 from bidi import get_display
+from datetime import datetime, timedelta
+try:  # Python 3.9+
+    from zoneinfo import ZoneInfo  # type: ignore
+except Exception:  # pragma: no cover
+    ZoneInfo = None  # type: ignore
 
 NOMINATIM_USER_AGENT = "IsraelBusCLI/1.0 (+https://github.com/)"  # customize if publishing
 
@@ -88,15 +93,15 @@ def format_line(line: Dict[str, Any]) -> str:
     return f"{number} -> {get_display(dest)} {('('+get_display(operator)+')') if operator else ''}".strip()
 
 def format_arrival(line: Dict[str, Any]) -> str:
-    """Return a human readable arrival info string for a realtime line object.
+    """Return human readable arrival info (mins, distance, scheduled/ETA time).
 
-    Utilises MinutesToArrival, Distance, and DtArrival if present.
+    If DtArrival is a placeholder (e.g. 0001-01-01..., 9999-..., or midnight with data),
+    we compute an ETA from current time + MinutesToArrival instead of showing 00:00.
     """
-    # Minutes to arrival
+    # Minutes to arrival (primary real-time indicator)
     mins_raw = line.get("MinutesToArrival")
     mins: Optional[int] = None
     try:
-        # Some APIs may return string with spaces
         if mins_raw is not None:
             mins = int(str(mins_raw).strip())
     except (ValueError, TypeError):
@@ -111,28 +116,54 @@ def format_arrival(line: Dict[str, Any]) -> str:
     else:
         mins_part = f"{mins} min"
 
-    # Distance (kilometers from stop)
+    # Distance (units unclear; treat as kilometers only if big, else meters)
     dist_raw = line.get("Distance")
     dist_part = ""
     try:
         if dist_raw is not None:
             dist_val = int(str(dist_raw).strip())
             if dist_val > 0:
-                dist_part = f"{dist_val} km"
+                # Heuristic: values under 1000 likely meters, else km
+                if dist_val < 1000:
+                    dist_part = f"{dist_val}m"
+                else:
+                    dist_part = f"{dist_val/1000:.1f}km"
     except (ValueError, TypeError):
         pass
 
-    # Scheduled arrival timestamp
     ts = line.get("DtArrival")
     ts_part = ""
-    if ts and isinstance(ts, str) and not ts.startswith("9999-"):
-        # Expect ISO format; we just take HH:MM
+    placeholder = False
+    if isinstance(ts, str):
+        if ts.startswith("9999-") or ts.startswith("0001-"):
+            placeholder = True
+        # Many feeds provide 00:00:00 when only relative minutes known
+        elif ts.endswith("00:00:00") and (mins is not None and mins > 0):
+            placeholder = True
+    # Determine timezone
+    tz = None
+    if ZoneInfo is not None:
         try:
-            time_section = ts.split("T", 1)[1]
-            hhmm = time_section[:5]
-            ts_part = hhmm + " (scheduled)" #for example: 14:30 (scheduled)
-        except Exception:
-            ts_part = ""
+            tz = ZoneInfo("Asia/Jerusalem")
+        except Exception:  # pragma: no cover
+            tz = None
+    now = datetime.now(tz) if tz else datetime.now()
 
-    parts = [p for p in [mins_part, dist_part, ts_part] if p]
+    if not placeholder and isinstance(ts, str):
+        # Try to parse ISO timestamp
+        try:
+            iso = ts.replace("Z", "+00:00")
+            dt = datetime.fromisoformat(iso)
+            if dt.tzinfo is None and tz:
+                dt = dt.replace(tzinfo=tz)
+            hhmm = dt.astimezone(tz).strftime("%H:%M") if tz else dt.strftime("%H:%M")
+            ts_part = f"{hhmm} (sched)"
+        except Exception:
+            placeholder = True  # fallback to computed ETA
+
+    if (placeholder or not ts_part) and mins is not None and mins >= 0:
+        eta = now + timedelta(minutes=mins)
+        ts_part = f"~{eta.strftime('%H:%M')}"
+
+    parts = [p for p in [mins_part, ts_part] if p]
     return " | ".join(parts)
