@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "israel-bus-cli"
-version = "0.1.0"
+version = "0.1.1"
 description = "CLI + Python API to search Israeli bus stops and realtime line arrivals"
 readme = "README.md"
 license = { text = "MIT" }
