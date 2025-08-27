@@ -11,12 +11,12 @@ pip install israel-bus-cli
 
 Search address and list nearby stops (JSON):
 ```
-israel-bus --address "יהודה הנשיא 36 תל אביב" --list-stops --json
+israel-bus --address "דיזינגוף 220 תל אביב" --list-stops --json
 ```
 
 Get lines for the first (nearest) stop, filter line 12:
 ```
-israel-bus --address "יהודה הנשיא 36 תל אביב" --first-stop --line 12
+israel-bus --address "דיזינגוף 220 תל אביב" --first-stop --line 12
 ```
 
 Direct by stop id:
@@ -33,7 +33,7 @@ israel-bus
 ```python
 from israel_bus_cli import search_address, get_stops_near_location, get_lines_by_stop
 
-addr = search_address("יהודה הנשיא 36 תל אביב")[0]
+addr = search_address("דיזינגוף 220 תל אביב")[0]
 lat, lon = float(addr['lat']), float(addr['lon'])
 stops = get_stops_near_location(lat, lon)
 lines = get_lines_by_stop('26629')
